@@ -34,37 +34,68 @@ jobs:
           docker build -t $IMAGE .
           docker push $IMAGE
 
-      # 4. Crea la Container App la primera vez; las siguientes solo la actualiza
+      # 4. Crea o actualiza la Container App con un PUT directo a la API de Azure (ARM)
+      #    Se usa az rest porque "az containerapp" falla mientras Microsoft.App sigue atascado en "Registering"
+      #    El PUT es idempotente: la primera vez crea la API y las siguientes la actualiza con la nueva imagen
       - name: Crear o actualizar la API
         env:
           DB_URL: ${{ secrets.DATABRICKS_URL }}
           DB_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
         run: |
-          if az containerapp show -n $APP_NAME -g $RESOURCE_GROUP > /dev/null 2>&1; then
-            echo "La API ya existe: se actualiza"
-            az containerapp secret set -n $APP_NAME -g $RESOURCE_GROUP \
-              --secrets databricks-url="$DB_URL" databricks-token="$DB_TOKEN"
-            az containerapp update -n $APP_NAME -g $RESOURCE_GROUP --image $IMAGE
-          else
-            echo "Primera vez: se crea la API"
-            ACR_PASSWORD=$(az acr credential show -n $ACR_NAME --query "passwords[0].value" -o tsv)
-            az containerapp create -n $APP_NAME -g $RESOURCE_GROUP \
-              --environment $ENVIRONMENT \
-              --image $IMAGE \
-              --registry-server $ACR_NAME.azurecr.io \
-              --registry-username $ACR_NAME \
-              --registry-password "$ACR_PASSWORD" \
-              --target-port 8000 \
-              --ingress external \
-              --min-replicas 0 \
-              --max-replicas 1 \
-              --secrets databricks-url="$DB_URL" databricks-token="$DB_TOKEN" \
-              --env-vars DATABRICKS_URL=secretref:databricks-url DATABRICKS_TOKEN=secretref:databricks-token
-          fi
+          SUB=$(az account show --query id -o tsv)
+          APP_URL="https://management.azure.com/subscriptions/$SUB/resourceGroups/$RESOURCE_GROUP/providers/Microsoft.App/containerApps/$APP_NAME?api-version=2024-03-01"
+          ENV_ID="/subscriptions/$SUB/resourceGroups/$RESOURCE_GROUP/providers/Microsoft.App/managedEnvironments/$ENVIRONMENT"
+          ACR_PASSWORD=$(az acr credential show -n $ACR_NAME --query "passwords[0].value" -o tsv)
+          LOCATION=$(az group show -n $RESOURCE_GROUP --query location -o tsv)
+
+          jq -n \
+            --arg loc "$LOCATION" --arg env "$ENV_ID" --arg image "$IMAGE" \
+            --arg server "$ACR_NAME.azurecr.io" --arg user "$ACR_NAME" --arg pass "$ACR_PASSWORD" \
+            --arg dburl "$DB_URL" --arg dbtoken "$DB_TOKEN" '{
+              location: $loc,
+              properties: {
+                environmentId: $env,
+                configuration: {
+                  ingress: { external: true, targetPort: 8000 },
+                  registries: [{ server: $server, username: $user, passwordSecretRef: "acr-password" }],
+                  secrets: [
+                    { name: "acr-password", value: $pass },
+                    { name: "databricks-url", value: $dburl },
+                    { name: "databricks-token", value: $dbtoken }
+                  ]
+                },
+                template: {
+                  containers: [{
+                    name: "api",
+                    image: $image,
+                    resources: { cpu: 0.5, memory: "1Gi" },
+                    env: [
+                      { name: "DATABRICKS_URL", secretRef: "databricks-url" },
+                      { name: "DATABRICKS_TOKEN", secretRef: "databricks-token" }
+                    ]
+                  }],
+                  scale: { minReplicas: 0, maxReplicas: 1 }
+                }
+              }
+            }' > app.json
+
+          az rest --method put --url "$APP_URL" --body @app.json --query properties.provisioningState -o tsv
+          rm app.json
+
+          # Espera a que Azure termine de aprovisionar la nueva versión
+          for i in $(seq 1 30); do
+            STATE=$(az rest --method get --url "$APP_URL" --query properties.provisioningState -o tsv)
+            echo "Estado: $STATE"
+            [ "$STATE" = "Succeeded" ] && break
+            [ "$STATE" = "Failed" ] && exit 1
+            sleep 10
+          done
 
       # 5. Muestra la URL pública de la API
       - name: URL de la API
         run: |
-          FQDN=$(az containerapp show -n $APP_NAME -g $RESOURCE_GROUP --query properties.configuration.ingress.fqdn -o tsv)
+          SUB=$(az account show --query id -o tsv)
+          APP_URL="https://management.azure.com/subscriptions/$SUB/resourceGroups/$RESOURCE_GROUP/providers/Microsoft.App/containerApps/$APP_NAME?api-version=2024-03-01"
+          FQDN=$(az rest --method get --url "$APP_URL" --query properties.configuration.ingress.fqdn -o tsv)
           echo "API publicada en: https://$FQDN"
           echo "Pruebe: https://$FQDN/health"
