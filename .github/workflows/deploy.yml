@@ -1,79 +1,70 @@
-# Construye la imagen Docker, la sube al ACR y la despliega en Azure Container Apps
-name: Build y deploy a Azure Container Apps
+# Despliegue automático de la API en Azure Container Apps
+# Se ejecuta en cada push a main (excepto si solo cambia index.html) o a mano desde la pestaña Actions
+name: Desplegar API en Azure
 
 on:
   push:
     branches: [main]
+    paths-ignore: ["index.html"]   # el frontend vive en Storage, no requiere reconstruir el Docker
   workflow_dispatch:
 
 env:
   RESOURCE_GROUP: rg-mlops-ean
-  LOCATION: westus
   ACR_NAME: acrmsanti
-  IMAGE_NAME: mlops-ean-api
-  LOG_WORKSPACE: log-mlops-ean
-  CONTAINERAPP_ENV: cae-mlops-ean
-  CONTAINERAPP_NAME: ca-mlops-ean-api
+  ENVIRONMENT: env-mlops-ean
+  APP_NAME: api-mlops-ean
+  IMAGE: acrmsanti.azurecr.io/api-mlops-ean:${{ github.sha }}   # cada versión con la etiqueta del commit
 
 jobs:
-  build-and-deploy:
+  desplegar:
     runs-on: ubuntu-latest
     steps:
-      - name: Descargar el código
-        uses: actions/checkout@v4
+      # 1. Descarga el código del repositorio
+      - uses: actions/checkout@v4
 
-      - name: Login en Azure (service principal)
-        uses: azure/login@v2
+      # 2. Inicia sesión en Azure con la cuenta de servicio
+      - uses: azure/login@v2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      - name: Build y push de la imagen al ACR
+      # 3. Construye la imagen Docker y la sube al Container Registry
+      - name: Construir y subir imagen
         run: |
-          IMAGE="$ACR_NAME.azurecr.io/$IMAGE_NAME:${{ github.sha }}"
-          az acr login --name "$ACR_NAME"
-          docker build -t "$IMAGE" .
-          docker push "$IMAGE"
-          echo "IMAGE=$IMAGE" >> "$GITHUB_ENV"
+          az acr login --name $ACR_NAME
+          docker build -t $IMAGE .
+          docker push $IMAGE
 
-      - name: Crear o actualizar la Container App
+      # 4. Crea la Container App la primera vez; las siguientes solo la actualiza
+      - name: Crear o actualizar la API
         env:
-          DATABRICKS_URL: ${{ secrets.DATABRICKS_URL }}
-          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+          DB_URL: ${{ secrets.DATABRICKS_URL }}
+          DB_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
         run: |
-          az extension add --name containerapp --upgrade --only-show-errors
-
-          # El environment se crea solo la primera vez
-          if ! az containerapp env show -n "$CONTAINERAPP_ENV" -g "$RESOURCE_GROUP" > /dev/null 2>&1; then
-            LOG_ID=$(az monitor log-analytics workspace show -g "$RESOURCE_GROUP" -n "$LOG_WORKSPACE" --query customerId -o tsv)
-            LOG_KEY=$(az monitor log-analytics workspace get-shared-keys -g "$RESOURCE_GROUP" -n "$LOG_WORKSPACE" --query primarySharedKey -o tsv)
-            echo "::add-mask::$LOG_KEY"
-            az containerapp env create -n "$CONTAINERAPP_ENV" -g "$RESOURCE_GROUP" -l "$LOCATION" \
-              --logs-workspace-id "$LOG_ID" --logs-workspace-key "$LOG_KEY" -o none
-          fi
-
-          if az containerapp show -n "$CONTAINERAPP_NAME" -g "$RESOURCE_GROUP" > /dev/null 2>&1; then
-            # Ya existe: actualiza el token y despliega la nueva imagen
-            az containerapp secret set -n "$CONTAINERAPP_NAME" -g "$RESOURCE_GROUP" \
-              --secrets databricks-token="$DATABRICKS_TOKEN" -o none
-            az containerapp update -n "$CONTAINERAPP_NAME" -g "$RESOURCE_GROUP" --image "$IMAGE" \
-              --set-env-vars DATABRICKS_URL="$DATABRICKS_URL" DATABRICKS_TOKEN=secretref:databricks-token -o none
+          if az containerapp show -n $APP_NAME -g $RESOURCE_GROUP > /dev/null 2>&1; then
+            echo "La API ya existe: se actualiza"
+            az containerapp secret set -n $APP_NAME -g $RESOURCE_GROUP \
+              --secrets databricks-url="$DB_URL" databricks-token="$DB_TOKEN"
+            az containerapp update -n $APP_NAME -g $RESOURCE_GROUP --image $IMAGE
           else
-            # Primera vez: crea la app usando el usuario admin del ACR para descargar la imagen
-            ACR_USER=$(az acr credential show -n "$ACR_NAME" --query username -o tsv)
-            ACR_PASS=$(az acr credential show -n "$ACR_NAME" --query "passwords[0].value" -o tsv)
-            echo "::add-mask::$ACR_PASS"
-            az containerapp create -n "$CONTAINERAPP_NAME" -g "$RESOURCE_GROUP" \
-              --environment "$CONTAINERAPP_ENV" --image "$IMAGE" \
-              --registry-server "$ACR_NAME.azurecr.io" --registry-username "$ACR_USER" --registry-password "$ACR_PASS" \
-              --target-port 8000 --ingress external \
-              --cpu 0.25 --memory 0.5Gi --min-replicas 0 --max-replicas 1 \
-              --secrets databricks-token="$DATABRICKS_TOKEN" \
-              --env-vars DATABRICKS_URL="$DATABRICKS_URL" DATABRICKS_TOKEN=secretref:databricks-token -o none
+            echo "Primera vez: se crea la API"
+            ACR_PASSWORD=$(az acr credential show -n $ACR_NAME --query "passwords[0].value" -o tsv)
+            az containerapp create -n $APP_NAME -g $RESOURCE_GROUP \
+              --environment $ENVIRONMENT \
+              --image $IMAGE \
+              --registry-server $ACR_NAME.azurecr.io \
+              --registry-username $ACR_NAME \
+              --registry-password "$ACR_PASSWORD" \
+              --target-port 8000 \
+              --ingress external \
+              --min-replicas 0 \
+              --max-replicas 1 \
+              --secrets databricks-url="$DB_URL" databricks-token="$DB_TOKEN" \
+              --env-vars DATABRICKS_URL=secretref:databricks-url DATABRICKS_TOKEN=secretref:databricks-token
           fi
 
-      - name: Mostrar la URL de la API
+      # 5. Muestra la URL pública de la API
+      - name: URL de la API
         run: |
-          FQDN=$(az containerapp show -n "$CONTAINERAPP_NAME" -g "$RESOURCE_GROUP" --query properties.configuration.ingress.fqdn -o tsv)
-          echo "API desplegada en https://$FQDN"
-          echo "### API desplegada: https://$FQDN" >> "$GITHUB_STEP_SUMMARY"
-          echo "Health check: https://$FQDN/health" >> "$GITHUB_STEP_SUMMARY"
+          FQDN=$(az containerapp show -n $APP_NAME -g $RESOURCE_GROUP --query properties.configuration.ingress.fqdn -o tsv)
+          echo "API publicada en: https://$FQDN"
+          echo "Pruebe: https://$FQDN/health"
