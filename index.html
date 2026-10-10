@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Predicción de aprobación · MLOps EAN</title>
+  <style>
+    :root {
+      --bg: #f4f6f9;
+      --card: #ffffff;
+      --text: #1d2433;
+      --muted: #5b6475;
+      --border: #d6dbe4;
+      --accent: #0b5cad;
+      --accent-hover: #094a8b;
+      --ok-bg: #e6f4ea;
+      --ok-text: #1e6b34;
+      --bad-bg: #fdecea;
+      --bad-text: #a1271b;
+      --warn-bg: #fff4e0;
+      --warn-text: #8a5a00;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #12161d;
+        --card: #1b212b;
+        --text: #e6e9ef;
+        --muted: #9aa3b2;
+        --border: #313a48;
+        --accent: #4b9be8;
+        --accent-hover: #6aaef0;
+        --ok-bg: #173323;
+        --ok-text: #8fd6a5;
+        --bad-bg: #3a1c1a;
+        --bad-text: #f2a097;
+        --warn-bg: #3a2e14;
+        --warn-text: #f0c46b;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+    }
+    main { max-width: 620px; margin: 0 auto; padding: 32px 16px 48px; }
+    h1 { font-size: 1.6rem; margin: 0 0 4px; }
+    .sub { color: var(--muted); margin: 0 0 24px; }
+    form {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 24px;
+    }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px 20px; }
+    @media (max-width: 520px) { .grid { grid-template-columns: 1fr; } }
+    label { display: block; font-weight: 600; font-size: 0.92rem; margin-bottom: 4px; }
+    .hint { font-weight: 400; color: var(--muted); font-size: 0.8rem; }
+    input, select {
+      width: 100%;
+      padding: 9px 10px;
+      font-size: 1rem;
+      color: var(--text);
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+    }
+    input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+    button {
+      margin-top: 22px;
+      width: 100%;
+      padding: 12px;
+      font-size: 1rem;
+      font-weight: 600;
+      color: #fff;
+      background: var(--accent);
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+    button:hover { background: var(--accent-hover); }
+    button:disabled { opacity: 0.6; cursor: wait; }
+    #resultado {
+      display: none;
+      margin-top: 20px;
+      padding: 18px 20px;
+      border-radius: 12px;
+      font-size: 1.05rem;
+    }
+    #resultado.ok   { display: block; background: var(--ok-bg);   color: var(--ok-text); }
+    #resultado.bad  { display: block; background: var(--bad-bg);  color: var(--bad-text); }
+    #resultado.warn { display: block; background: var(--warn-bg); color: var(--warn-text); }
+    #resultado strong { font-size: 1.35rem; display: block; margin-bottom: 2px; }
+    footer { margin-top: 28px; color: var(--muted); font-size: 0.82rem; text-align: center; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>¿El estudiante aprueba?</h1>
+  <p class="sub">Ingresa los datos del estudiante y el modelo desplegado en Databricks hará la predicción.</p>
+
+  <form id="formulario">
+    <div class="grid">
+      <div>
+        <label for="horas_estudio">Horas de estudio <span class="hint">(0–24 por día)</span></label>
+        <input id="horas_estudio" type="number" step="0.1" min="0" max="24" value="7.5" required>
+      </div>
+      <div>
+        <label for="horas_sueno">Horas de sueño <span class="hint">(0–24 por día)</span></label>
+        <input id="horas_sueno" type="number" step="0.1" min="0" max="24" value="7" required>
+      </div>
+      <div>
+        <label for="asistencia">Asistencia <span class="hint">(0–100 %)</span></label>
+        <input id="asistencia" type="number" step="0.1" min="0" max="100" value="90" required>
+      </div>
+      <div>
+        <label for="promedio_previo">Promedio previo <span class="hint">(0–5)</span></label>
+        <input id="promedio_previo" type="number" step="0.1" min="0" max="5" value="4.2" required>
+      </div>
+      <div>
+        <label for="indice_dedicacion">Índice de dedicación <span class="hint">(≥ 0)</span></label>
+        <input id="indice_dedicacion" type="number" step="0.1" min="0" value="8" required>
+      </div>
+      <div>
+        <label for="en_riesgo">¿En riesgo académico?</label>
+        <select id="en_riesgo">
+          <option value="0" selected>No</option>
+          <option value="1">Sí</option>
+        </select>
+      </div>
+      <div>
+        <label for="destacado">¿Estudiante destacado?</label>
+        <select id="destacado">
+          <option value="0">No</option>
+          <option value="1" selected>Sí</option>
+        </select>
+      </div>
+    </div>
+    <button id="boton" type="submit">Predecir</button>
+  </form>
+
+  <div id="resultado" role="status" aria-live="polite"></div>
+
+  <footer>MLOps EAN · Frontend en Azure Storage · API en Azure Container Apps · Modelo en Databricks</footer>
+</main>
+
+<script>
+  // URL de la API desplegada en Azure Container Apps (debe terminar en /predecir)
+  const API_URL = "https://api-mlops-ean.bravestone-a104ed9a.westus.azurecontainerapps.io/predecir";
+
+  const form = document.getElementById("formulario");
+  const boton = document.getElementById("boton");
+  const resultado = document.getElementById("resultado");
+
+  function mostrar(clase, html) {
+    resultado.className = clase;
+    resultado.innerHTML = html;
+  }
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+
+    // Mismos campos y tipos que espera la clase Estudiante de main.py
+    const datos = {
+      horas_estudio: parseFloat(document.getElementById("horas_estudio").value),
+      horas_sueno: parseFloat(document.getElementById("horas_sueno").value),
+      asistencia: parseFloat(document.getElementById("asistencia").value),
+      promedio_previo: parseFloat(document.getElementById("promedio_previo").value),
+      indice_dedicacion: parseFloat(document.getElementById("indice_dedicacion").value),
+      en_riesgo: parseInt(document.getElementById("en_riesgo").value, 10),
+      destacado: parseInt(document.getElementById("destacado").value, 10)
+    };
+
+    boton.disabled = true;
+    boton.textContent = "Consultando el modelo…";
+    mostrar("warn", "La primera consulta puede tardar hasta un par de minutos mientras la API y el modelo se encienden.");
+
+    try {
+      const r = await fetch(API_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(datos)
+      });
+      const json = await r.json().catch(() => ({}));
+
+      if (r.ok) {
+        const aprueba = json.prediccion === 1;
+        mostrar(aprueba ? "ok" : "bad",
+          `<strong>${aprueba ? "Aprueba ✅" : "Reprueba ❌"}</strong>` +
+          `Predicción del modelo: ${json.prediccion}`);
+      } else if (r.status === 504) {
+        mostrar("warn", "El modelo está arrancando y tardó demasiado. Espera un minuto e intenta de nuevo.");
+      } else {
+        const detalle = typeof json.detail === "string" ? json.detail : JSON.stringify(json.detail || json);
+        mostrar("bad", `<strong>Error ${r.status}</strong>${detalle.replace(/</g, "&lt;")}`);
+      }
+    } catch (err) {
+      mostrar("bad", "<strong>No hubo conexión con la API</strong>Revisa que API_URL tenga la dirección correcta y termine en /predecir.");
+    } finally {
+      boton.disabled = false;
+      boton.textContent = "Predecir";
+    }
+  });
+</script>
+</body>
+</html>
