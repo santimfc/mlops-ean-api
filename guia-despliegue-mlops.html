@@ -1,0 +1,922 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Del notebook a internet · Despliegue de un modelo de Databricks en Azure</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --tinta: #1B2430;
+    --tinta-suave: #4F5B6B;
+    --fondo: #FFFFFF;
+    --panel: #EEF1F4;
+    --borde: #D3DAE2;
+    --rojo: #D1432B;      /* línea del modelo (Databricks) */
+    --gris: #4A5566;      /* línea del código (GitHub → Azure) */
+    --azul: #1F6FD1;      /* línea de la predicción (usuario) */
+    --codigo-fondo: #17202B;
+    --codigo-texto: #E6EDF3;
+    --analogia: #0E7C74;
+    --cuidado: #B7791F;
+    --comprueba: #2E7D4F;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; scroll-padding-top: 16px; }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+  body {
+    margin: 0;
+    font-family: "Atkinson Hyperlegible", "Segoe UI", system-ui, sans-serif;
+    font-size: 18px;
+    line-height: 1.6;
+    color: var(--tinta);
+    background: var(--fondo);
+  }
+  a { color: var(--azul); }
+  :focus-visible { outline: 3px solid #8FB6EA; outline-offset: 2px; }
+
+  /* ---------- Estructura ---------- */
+  .marco { display: grid; grid-template-columns: 270px minmax(0, 1fr); max-width: 1240px; margin: 0 auto; }
+  nav.indice {
+    position: sticky; top: 0; align-self: start; height: 100vh; overflow-y: auto;
+    padding: 32px 20px 32px 24px; border-right: 1px solid var(--borde); font-size: 15px;
+  }
+  nav.indice strong { display: block; margin-bottom: 12px; font-size: 16px; }
+  nav.indice ol { list-style: none; margin: 0; padding: 0; }
+  nav.indice li { margin: 0 0 4px; }
+  nav.indice a { display: flex; gap: 10px; padding: 6px 8px; border-radius: 4px; color: var(--tinta); text-decoration: none; }
+  nav.indice a:hover { background: var(--panel); }
+  nav.indice .num { flex: 0 0 26px; font-family: "IBM Plex Mono", monospace; color: var(--tinta-suave); font-size: 14px; padding-top: 1px; }
+  main { padding: 48px 48px 96px; min-width: 0; }
+  section { max-width: 780px; margin: 0 0 72px; }
+
+  /* ---------- Tipografía ---------- */
+  h1 { font-size: 3rem; line-height: 1.08; margin: 0 0 20px; letter-spacing: -0.01em; max-width: 18ch; }
+  h2 { font-size: 2rem; line-height: 1.2; margin: 0 0 16px; padding-top: 8px; }
+  h2 .fase { display: block; font-size: 1rem; font-weight: 400; color: var(--tinta-suave); margin-bottom: 4px; }
+  h3 { font-size: 1.3rem; margin: 36px 0 10px; }
+  p, li { max-width: 72ch; }
+  .entrada { font-size: 1.25rem; color: var(--tinta-suave); max-width: 60ch; margin: 0 0 32px; }
+  code { font-family: "IBM Plex Mono", ui-monospace, Consolas, monospace; font-size: 0.88em; background: var(--panel); padding: 1px 5px; border-radius: 3px; }
+
+  /* ---------- Bloques de código ---------- */
+  .codigo { position: relative; margin: 14px 0 22px; }
+  .codigo .etiqueta { font-size: 14px; color: var(--tinta-suave); margin-bottom: 4px; }
+  pre {
+    margin: 0; padding: 16px 18px; overflow-x: auto;
+    background: var(--codigo-fondo); color: var(--codigo-texto);
+    border-radius: 6px; font-size: 14.5px; line-height: 1.55;
+  }
+  pre code { background: none; padding: 0; font-size: inherit; color: inherit; }
+  .copiar {
+    position: absolute; top: 30px; right: 8px;
+    font: 600 13px "Atkinson Hyperlegible", sans-serif;
+    background: #2B3746; color: #E6EDF3; border: 1px solid #3D4B5D; border-radius: 4px;
+    padding: 4px 10px; cursor: pointer;
+  }
+  .codigo.sin-etiqueta .copiar { top: 8px; }
+  .copiar:hover { background: #3A4859; }
+
+  /* ---------- Avisos ---------- */
+  .aviso { border-left: 5px solid; padding: 14px 18px; margin: 20px 0; background: var(--panel); border-radius: 0 6px 6px 0; }
+  .aviso p { margin: 0 0 8px; }
+  .aviso p:last-child { margin: 0; }
+  .aviso .titulo { font-weight: 700; margin-bottom: 4px; }
+  .aviso.analogia { border-color: var(--analogia); }
+  .aviso.analogia .titulo { color: var(--analogia); }
+  .aviso.cuidado { border-color: var(--cuidado); }
+  .aviso.cuidado .titulo { color: #8A5A10; }
+  .aviso.comprueba { border-color: var(--comprueba); }
+  .aviso.comprueba .titulo { color: var(--comprueba); }
+
+  /* ---------- Tablas ---------- */
+  .tabla { overflow-x: auto; margin: 16px 0 24px; }
+  table { border-collapse: collapse; width: 100%; font-size: 16px; }
+  th, td { text-align: left; vertical-align: top; padding: 10px 12px; border-bottom: 1px solid var(--borde); }
+  th { background: var(--panel); font-weight: 700; }
+
+  /* ---------- Mapa de la arquitectura ---------- */
+  .mapa { overflow-x: auto; margin: 8px 0 12px; }
+  .mapa svg { display: block; width: 100%; min-width: 760px; height: auto; }
+  .mapa text { font-family: "Atkinson Hyperlegible", sans-serif; fill: var(--tinta); }
+  .leyenda { display: flex; flex-wrap: wrap; gap: 8px 24px; font-size: 15px; color: var(--tinta-suave); margin-bottom: 8px; }
+  .leyenda span::before { content: ""; display: inline-block; width: 28px; height: 6px; border-radius: 3px; margin-right: 8px; vertical-align: middle; }
+  .leyenda .l-rojo::before { background: var(--rojo); }
+  .leyenda .l-gris::before { background: var(--gris); }
+  .leyenda .l-azul::before { background: var(--azul); }
+
+  /* Flujo vertical de una predicción */
+  ol.flujo { list-style: none; padding: 0; margin: 16px 0 24px; counter-reset: paso; }
+  ol.flujo li { position: relative; padding: 0 0 18px 48px; counter-increment: paso; }
+  ol.flujo li::before {
+    content: counter(paso); position: absolute; left: 0; top: 0;
+    width: 32px; height: 32px; border-radius: 50%; background: var(--azul); color: #fff;
+    display: grid; place-items: center; font-weight: 700; font-size: 15px;
+  }
+  ol.flujo li::after { content: ""; position: absolute; left: 15px; top: 34px; bottom: 2px; width: 2px; background: #B9CEEB; }
+  ol.flujo li:last-child::after { display: none; }
+
+  dl.glosario { margin: 16px 0; }
+  dl.glosario dt { font-weight: 700; margin-top: 18px; }
+  dl.glosario dd { margin: 4px 0 0; max-width: 72ch; }
+
+  .cierre { border-top: 1px solid var(--borde); padding-top: 24px; color: var(--tinta-suave); font-size: 15px; }
+
+  @media (max-width: 1000px) {
+    .marco { grid-template-columns: 1fr; }
+    nav.indice { position: static; height: auto; border-right: none; border-bottom: 1px solid var(--borde); }
+    nav.indice ol { columns: 2; column-gap: 16px; }
+    main { padding: 32px 20px 64px; }
+    h1 { font-size: 2.3rem; }
+  }
+  @media (max-width: 560px) {
+    body { font-size: 17px; }
+    nav.indice ol { columns: 1; }
+    h2 { font-size: 1.6rem; }
+  }
+  @media print {
+    nav.indice, .copiar { display: none; }
+    .marco { display: block; }
+    main { padding: 0; }
+    pre { white-space: pre-wrap; }
+    section { break-inside: auto; }
+  }
+</style>
+</head>
+<body>
+<div class="marco">
+
+<nav class="indice" aria-label="Contenido de la guía">
+  <strong>Contenido</strong>
+  <ol>
+    <li><a href="#arquitectura"><span class="num">A</span>La arquitectura</a></li>
+    <li><a href="#conceptos"><span class="num">B</span>Conceptos clave</a></li>
+    <li><a href="#fase0"><span class="num">0</span>Databricks: el endpoint</a></li>
+    <li><a href="#fase1"><span class="num">1</span>El código de la API</a></li>
+    <li><a href="#fase2"><span class="num">2</span>GitHub</a></li>
+    <li><a href="#fase3"><span class="num">3</span>La infraestructura en Azure</a></li>
+    <li><a href="#fase4"><span class="num">4</span>Despliegue automático</a></li>
+    <li><a href="#fase5"><span class="num">5</span>Probar la API</a></li>
+    <li><a href="#fase6"><span class="num">6</span>Publicar la página web</a></li>
+    <li><a href="#ciclo"><span class="num">C</span>Cuando algo cambia</a></li>
+    <li><a href="#errores"><span class="num">D</span>Errores frecuentes</a></li>
+    <li><a href="#resumen"><span class="num">E</span>Resumen y limpieza</a></li>
+  </ol>
+</nav>
+
+<main>
+
+<!-- ================= PORTADA + ARQUITECTURA ================= -->
+<section id="arquitectura">
+  <h1>Del notebook a internet</h1>
+  <p class="entrada">Cómo convertir un modelo entrenado en Databricks en una página web que cualquier persona puede usar, desplegando una API en Azure con Docker y GitHub Actions.</p>
+
+  <h2>La arquitectura que vamos a construir</h2>
+  <p>El proyecto tiene tres recorridos que se cruzan. Cada uno es una línea del mapa: el <strong>modelo</strong> nace en Databricks, el <strong>código</strong> viaja desde tu computador hasta Azure, y la <strong>predicción</strong> va del usuario al modelo y de vuelta.</p>
+
+  <div class="leyenda" aria-hidden="true">
+    <span class="l-rojo">Modelo (Databricks)</span>
+    <span class="l-gris">Código (tu PC → GitHub → Azure)</span>
+    <span class="l-azul">Predicción (usuario → modelo)</span>
+  </div>
+  <div class="mapa">
+    <svg viewBox="0 0 1000 470" role="img" aria-labelledby="mapa-titulo mapa-desc">
+      <title id="mapa-titulo">Mapa de la arquitectura del despliegue</title>
+      <desc id="mapa-desc">Línea roja: notebook de entrenamiento, Unity Catalog con la versión champion, endpoint MLOPS_EAN. Línea gris: tu computador, repositorio en GitHub, GitHub Actions, Container Registry y la API en Container Apps. Línea azul: el usuario abre index.html en Azure Storage, el formulario llama a la API, y la API consulta el endpoint MLOPS_EAN.</desc>
+      <!-- Líneas -->
+      <path d="M90 90 H880" stroke="#D1432B" stroke-width="10" fill="none" stroke-linecap="round"/>
+      <path d="M90 250 H880" stroke="#4A5566" stroke-width="10" fill="none" stroke-linecap="round"/>
+      <path d="M90 400 H720 Q760 400 780 380 L860 300 Q880 280 880 250 V90" stroke="#1F6FD1" stroke-width="10" fill="none" stroke-linejoin="round" transform="translate(14 0)"/>
+      <!-- Estaciones línea roja -->
+      <circle cx="90" cy="90" r="13" fill="#fff" stroke="#D1432B" stroke-width="5"/>
+      <circle cx="420" cy="90" r="13" fill="#fff" stroke="#D1432B" stroke-width="5"/>
+      <!-- Estaciones línea gris -->
+      <circle cx="90" cy="250" r="13" fill="#fff" stroke="#4A5566" stroke-width="5"/>
+      <circle cx="290" cy="250" r="13" fill="#fff" stroke="#4A5566" stroke-width="5"/>
+      <circle cx="490" cy="250" r="13" fill="#fff" stroke="#4A5566" stroke-width="5"/>
+      <circle cx="690" cy="250" r="13" fill="#fff" stroke="#4A5566" stroke-width="5"/>
+      <!-- Estaciones línea azul -->
+      <circle cx="104" cy="400" r="13" fill="#fff" stroke="#1F6FD1" stroke-width="5"/>
+      <circle cx="420" cy="400" r="13" fill="#fff" stroke="#1F6FD1" stroke-width="5"/>
+      <!-- Correspondencias (dos líneas) -->
+      <rect x="866" y="72" width="42" height="36" rx="18" fill="#fff" stroke="#1B2430" stroke-width="4"/>
+      <rect x="866" y="232" width="42" height="36" rx="18" fill="#fff" stroke="#1B2430" stroke-width="4"/>
+      <!-- Etiquetas línea roja -->
+      <text x="90" y="52" text-anchor="middle" font-size="17" font-weight="700">Notebooks</text>
+      <text x="90" y="128" text-anchor="middle" font-size="14" fill="#4F5B6B">entrenan el modelo</text>
+      <text x="420" y="52" text-anchor="middle" font-size="17" font-weight="700">Unity Catalog</text>
+      <text x="420" y="128" text-anchor="middle" font-size="14" fill="#4F5B6B">versión 4 = @champion</text>
+      <text x="887" y="52" text-anchor="middle" font-size="17" font-weight="700">Endpoint MLOPS_EAN</text>
+      <text x="800" y="128" text-anchor="middle" font-size="14" fill="#4F5B6B">aquí se ejecuta el modelo</text>
+      <!-- Etiquetas línea gris -->
+      <text x="90" y="212" text-anchor="middle" font-size="17" font-weight="700">Tu PC</text>
+      <text x="90" y="288" text-anchor="middle" font-size="14" fill="#4F5B6B">main.py, Dockerfile</text>
+      <text x="290" y="212" text-anchor="middle" font-size="17" font-weight="700">GitHub</text>
+      <text x="290" y="288" text-anchor="middle" font-size="14" fill="#4F5B6B">repositorio</text>
+      <text x="490" y="212" text-anchor="middle" font-size="17" font-weight="700">GitHub Actions</text>
+      <text x="490" y="288" text-anchor="middle" font-size="14" fill="#4F5B6B">construye y despliega</text>
+      <text x="690" y="212" text-anchor="middle" font-size="17" font-weight="700">Container Registry</text>
+      <text x="690" y="288" text-anchor="middle" font-size="14" fill="#4F5B6B">guarda la imagen</text>
+      <text x="852" y="214" text-anchor="end" font-size="17" font-weight="700">API</text>
+      <text x="940" y="300" text-anchor="middle" font-size="14" fill="#4F5B6B">Container Apps</text>
+      <!-- Etiquetas línea azul -->
+      <text x="104" y="362" text-anchor="middle" font-size="17" font-weight="700">Usuario</text>
+      <text x="104" y="438" text-anchor="middle" font-size="14" fill="#4F5B6B">abre el navegador</text>
+      <text x="420" y="362" text-anchor="middle" font-size="17" font-weight="700">index.html</text>
+      <text x="420" y="438" text-anchor="middle" font-size="14" fill="#4F5B6B">Azure Storage (página web)</text>
+      <text x="640" y="438" text-anchor="middle" font-size="14" fill="#1F6FD1">POST /predecir</text>
+    </svg>
+  </div>
+  <p style="font-size:15px;color:var(--tinta-suave)">Las estaciones con contorno oscuro son correspondencias: la <strong>API</strong> es donde llega el código y por donde pasa la predicción; el <strong>endpoint</strong> es donde llega el modelo y donde termina la predicción.</p>
+
+  <h3>Qué hace cada pieza</h3>
+  <div class="tabla"><table>
+    <thead><tr><th>Pieza</th><th>Dónde vive</th><th>Qué hace</th></tr></thead>
+    <tbody>
+      <tr><td>Modelo champion (versión 4)</td><td>Databricks, Unity Catalog</td><td>El modelo entrenado y registrado con MLflow, marcado con el alias <code>@champion</code>.</td></tr>
+      <tr><td>Endpoint <code>MLOPS_EAN</code></td><td>Databricks, Model Serving</td><td>Mantiene el modelo encendido y responde predicciones por internet, protegido con un token.</td></tr>
+      <tr><td>Repositorio <code>mlops-ean-api</code></td><td>GitHub</td><td>Guarda el código de la API y el archivo que automatiza el despliegue.</td></tr>
+      <tr><td>GitHub Actions</td><td>GitHub</td><td>Cada vez que subes cambios, construye la imagen Docker y la despliega en Azure.</td></tr>
+      <tr><td>Container Registry <code>acrmlopseanlp</code></td><td>Azure</td><td>Bodega donde se guardan las imágenes Docker de la API.</td></tr>
+      <tr><td>API <code>api-mlops-ean</code></td><td>Azure Container Apps</td><td>Recibe los datos del formulario, los pasa al endpoint y devuelve "Aprueba" o "Reprueba".</td></tr>
+      <tr><td>Página <code>index.html</code></td><td>Azure Storage <code>stmlopseanlp</code></td><td>El formulario que ve el usuario.</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3>El viaje de una predicción</h3>
+  <ol class="flujo">
+    <li>El usuario abre la página web, llena los 7 datos del estudiante y hace clic en <strong>Predecir</strong>.</li>
+    <li>La página envía esos datos a la API en Azure, a la ruta <code>/predecir</code>.</li>
+    <li>La API revisa que los datos tengan sentido (por ejemplo, que la asistencia esté entre 0 y 100) y los pone en el formato que exige Databricks.</li>
+    <li>La API llama al endpoint <code>MLOPS_EAN</code> mostrando el token, como quien muestra el carné en la portería.</li>
+    <li>Databricks ejecuta el modelo champion y responde <code>{"predictions": [1]}</code>.</li>
+    <li>La API traduce el <code>1</code> a "Aprueba" y se lo devuelve a la página, que lo muestra como un sello verde.</li>
+  </ol>
+
+  <h3>Por qué está diseñado así</h3>
+  <p><strong>El modelo y la API viven separados.</strong> El modelo se queda en Databricks, que es donde se entrena, se versiona y tiene instaladas sus librerías. La API en Azure no carga el modelo: solo hace de mensajera. Esto trae tres ventajas:</p>
+  <ul>
+    <li><strong>Reentrenar no obliga a tocar Azure.</strong> Si el modelo cambia, se actualiza el endpoint en Databricks; la API sigue llamando a la misma dirección.</li>
+    <li><strong>El Docker es liviano.</strong> No necesita scikit-learn ni pandas, solo tres librerías.</li>
+    <li><strong>Hay un solo lugar de verdad para el modelo:</strong> MLflow en Databricks.</li>
+  </ul>
+  <div class="aviso analogia">
+    <p class="titulo">Analogía</p>
+    <p>Piensa en un restaurante. La cocina (Databricks) prepara los platos y tiene todos los ingredientes. El mesero (la API) toma el pedido del cliente, lo lleva a la cocina y trae el plato. El menú (index.html) es lo que el cliente ve. Si el chef cambia la receta, el mesero no necesita aprender a cocinar.</p>
+  </div>
+  <div class="aviso cuidado">
+    <p class="titulo">El costo de este diseño</p>
+    <p>Si el endpoint de Databricks se cae o está apagado, la API también falla. Databricks Free Edition no garantiza disponibilidad, así que esto sirve para aprender y para prototipos, no para un servicio crítico.</p>
+  </div>
+</section>
+
+<!-- ================= CONCEPTOS ================= -->
+<section id="conceptos">
+  <h2>Conceptos clave</h2>
+  <p>Antes de empezar, estas son las palabras que vas a escuchar durante toda la práctica.</p>
+  <dl class="glosario">
+    <dt>Endpoint de Model Serving</dt>
+    <dd>Un modelo "encendido" con una dirección web propia. Recibe datos y devuelve predicciones. Sin endpoint, el modelo solo existe guardado en el catálogo.</dd>
+    <dt>Alias champion</dt>
+    <dd>Una etiqueta que apunta a una versión del modelo. Hoy <code>@champion</code> apunta a la versión 4; si mañana promueves la 5, la etiqueta se mueve.</dd>
+    <dt>Token</dt>
+    <dd>Una contraseña larga (empieza con <code>dapi</code>) que demuestra que quien llama al endpoint tiene permiso.</dd>
+    <dt>API</dt>
+    <dd>Un programa que recibe peticiones por internet y responde. La nuestra está hecha con FastAPI y tiene dos rutas: <code>/health</code> (¿estás viva?) y <code>/predecir</code>.</dd>
+    <dt>Docker, imagen y contenedor</dt>
+    <dd>Docker empaqueta un programa con todo lo que necesita para correr. La <strong>imagen</strong> es el paquete cerrado; el <strong>contenedor</strong> es ese paquete funcionando. Así la API corre igual en tu computador y en Azure.</dd>
+    <dt>Container Registry</dt>
+    <dd>Una bodega de imágenes Docker en Azure. GitHub Actions deja ahí cada versión de la API.</dd>
+    <dt>Container Apps</dt>
+    <dd>El servicio de Azure que toma una imagen y la pone a correr con una URL pública. Se apaga sola cuando nadie la usa.</dd>
+    <dt>Git y GitHub</dt>
+    <dd>Git guarda versiones de tu código en tu computador. GitHub es el sitio web donde se publican esas versiones.</dd>
+    <dt>GitHub Actions</dt>
+    <dd>Un robot de GitHub que ejecuta tareas automáticamente cuando subes código. Aquí construye la imagen y la despliega.</dd>
+    <dt>Secretos</dt>
+    <dd>Valores sensibles (token, credenciales) que se guardan en GitHub o Azure de forma oculta, para que nunca queden escritos en el código.</dd>
+    <dt>Azure CLI</dt>
+    <dd>Un programa para manejar Azure escribiendo comandos que empiezan con <code>az</code>, en lugar de hacer clics en el portal. Los comandos se pueden copiar, repetir y automatizar.</dd>
+    <dt>Grupo de recursos</dt>
+    <dd>Una carpeta en Azure que agrupa todo lo del proyecto. Borrarla borra todo lo que contiene.</dd>
+    <dt>Región</dt>
+    <dd>El centro de datos físico donde se crean los recursos (por ejemplo <code>westus</code>). Las cuentas Azure for Students solo permiten algunas regiones.</dd>
+    <dt>Proveedor de recursos</dt>
+    <dd>Cada servicio de Azure (Container Apps, Storage…) debe activarse en una suscripción nueva antes de usarse. Activarlo se llama "registrar el proveedor".</dd>
+    <dt>CORS</dt>
+    <dd>Una regla de seguridad del navegador. Como la página y la API están en direcciones distintas, la API debe autorizar explícitamente que la página la llame.</dd>
+  </dl>
+</section>
+
+<!-- ================= FASE 0 ================= -->
+<section id="fase0">
+  <h2><span class="fase">Fase 0</span>Databricks: poner el modelo a responder</h2>
+  <p>El punto de partida es un modelo ya entrenado y registrado en Unity Catalog con el alias <code>@champion</code>. En esta fase lo convertimos en un servicio que responde por internet.</p>
+
+  <h3>1. Confirmar cuál es el champion</h3>
+  <p>En un notebook de Databricks:</p>
+  <div class="codigo"><div class="etiqueta">Python · notebook de Databricks</div><pre><code>import mlflow
+from mlflow.tracking import MlflowClient
+
+MODEL_NAME = "workspace.default.mlops-posgrado-estudiantes"  # nombre en Unity Catalog
+client = MlflowClient()
+
+champ = client.get_model_version_by_alias(MODEL_NAME, "champion")  # versión con alias champion
+print(f"Champion = versión {champ.version}")
+
+info = mlflow.models.get_model_info(f"models:/{MODEL_NAME}@champion")  # firma: campos que espera
+print(info.signature)</code></pre></div>
+  <p>Debe imprimir la versión (en nuestro caso, <strong>4</strong>) y la firma con los 7 campos de entrada. La firma es el contrato de lo que el modelo espera recibir: nombres de columnas y tipos.</p>
+  <div class="aviso comprueba">
+    <p class="titulo">Comprueba</p>
+    <p>"Champion = versión 4" significa que el alias apunta a esa versión. En el formulario de Serving no aparece el alias, solo números: por eso eliges la versión 4.</p>
+  </div>
+
+  <h3>2. Crear el endpoint</h3>
+  <ol>
+    <li>Menú izquierdo → <strong>Serving</strong> → <strong>Create serving endpoint</strong>.</li>
+    <li>Name: <code>MLOPS_EAN</code>.</li>
+    <li>Entity: <code>workspace.default.mlops-posgrado-estudiantes</code>, versión <strong>4</strong>.</li>
+    <li>Compute: CPU, tamaño <strong>Small</strong>, con <strong>Scale to zero</strong> activado (se apaga cuando nadie lo usa).</li>
+    <li><strong>Create</strong> y espera unos minutos hasta que el estado sea <strong>Ready</strong>.</li>
+  </ol>
+  <div class="aviso analogia">
+    <p class="titulo">¿Cómo sabe el endpoint qué librerías usar?</p>
+    <p>Cuando registraste el modelo con MLflow, se guardaron junto a él un <code>requirements.txt</code> y un <code>conda.yaml</code> con las versiones exactas de scikit-learn, pandas y Python. El endpoint los lee y monta un entorno idéntico al del entrenamiento. Puedes verlos en Catalog → modelo → versión 4 → Artifacts.</p>
+  </div>
+
+  <h3>3. Generar el token</h3>
+  <ol>
+    <li>Clic en tu usuario (arriba a la derecha) → <strong>Settings</strong> → <strong>Developer</strong> → <strong>Access tokens</strong> → <strong>Generate new token</strong>.</li>
+    <li>Ponle un comentario y una duración de 90 días.</li>
+    <li>Copia el valor <code>dapi...</code> y guárdalo: Databricks no lo vuelve a mostrar.</li>
+  </ol>
+
+  <h3>4. Probar el endpoint</h3>
+  <p>La URL del endpoint aparece en Serving → <code>MLOPS_EAN</code>, y termina en <code>/serving-endpoints/MLOPS_EAN/invocations</code>. Prueba desde una celda de Python:</p>
+  <div class="codigo"><div class="etiqueta">Python · prueba del endpoint</div><pre><code>import requests
+
+URL = "https://TU_WORKSPACE.cloud.databricks.com/serving-endpoints/MLOPS_EAN/invocations"
+TOKEN = "dapi..."  # tu token
+
+# datos de un estudiante de prueba, en el formato que exige Databricks
+datos = {"dataframe_records": [{
+    "horas_estudio": 7.5, "horas_sueno": 7.0, "asistencia": 90.0,
+    "promedio_previo": 4.2, "indice_dedicacion": 8.0,
+    "en_riesgo": 0, "destacado": 1
+}]}
+
+r = requests.post(URL, headers={"Authorization": f"Bearer {TOKEN}"}, json=datos, timeout=120)  # timeout largo por el arranque en frío
+print(r.status_code)  # 200 = OK
+print(r.json())       # {'predictions': [1]}</code></pre></div>
+  <p>Este código es exactamente lo que la API hará por dentro: mandar los datos con el token y leer la respuesta.</p>
+  <div class="aviso comprueba">
+    <p class="titulo">Resultado esperado</p>
+    <p><code>200</code> y <code>{'predictions': [1]}</code>. El 1 significa que el modelo predice que el estudiante aprueba.</p>
+  </div>
+
+  <h3>5. El endpoint queda fijo en una versión</h3>
+  <p>El endpoint guarda el <strong>número</strong> de versión, no el alias. Si reentrenas y la versión 5 pasa a ser champion, el endpoint sigue sirviendo la 4 hasta que alguien lo actualice.</p>
+  <div class="aviso analogia">
+    <p class="titulo">Analogía</p>
+    <p>El mesero tiene anotado "entregar el plato número 4". Si la cocina prepara un plato nuevo y le pone la etiqueta "champion", nadie le avisa al mesero. Hay que decirle: "ahora entrega el que tenga la etiqueta champion".</p>
+  </div>
+  <p>Ese aviso se puede hacer a mano (Serving → Edit endpoint → cambiar la versión) o con esta celda al final del notebook que promueve el champion:</p>
+  <div class="codigo"><div class="etiqueta">Python · al final de NB03</div><pre><code>from databricks.sdk import WorkspaceClient
+from databricks.sdk.service.serving import ServedEntityInput
+
+w = WorkspaceClient()  # dentro de Databricks se autentica solo
+version = client.get_model_version_by_alias(MODEL_NAME, "champion").version  # versión champion actual
+
+w.serving_endpoints.update_config_and_wait(
+    name="MLOPS_EAN",
+    served_entities=[ServedEntityInput(
+        entity_name=MODEL_NAME,
+        entity_version=str(version),  # le dice al endpoint qué versión servir
+        workload_size="Small",
+        scale_to_zero_enabled=True,
+    )],
+)
+print(f"MLOPS_EAN ahora sirve la versión {version}")</code></pre></div>
+  <p>La celda hace los mismos cuatro pasos que harías a mano: averigua la versión del champion, edita el endpoint, cambia el número y espera a que quede listo. Mientras se actualiza, el endpoint sigue sirviendo la versión anterior, así que la API no se cae.</p>
+</section>
+
+<!-- ================= FASE 1 ================= -->
+<section id="fase1">
+  <h2><span class="fase">Fase 1</span>El código de la API</h2>
+  <p>Son tres archivos en una carpeta de tu computador, por ejemplo <code>C:\mlops-ean-api</code>. Cada uno responde una pregunta distinta:</p>
+  <div class="tabla"><table>
+    <thead><tr><th>Archivo</th><th>Pregunta que responde</th><th>En la cocina</th></tr></thead>
+    <tbody>
+      <tr><td><code>main.py</code></td><td>¿Qué hace la API?</td><td>El plato</td></tr>
+      <tr><td><code>requirements.txt</code></td><td>¿Qué necesita para funcionar?</td><td>Los ingredientes</td></tr>
+      <tr><td><code>Dockerfile</code></td><td>¿Cómo se arma todo?</td><td>La receta</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3>main.py</h3>
+  <div class="codigo"><div class="etiqueta">main.py</div><pre><code># API FastAPI que recibe los datos de un estudiante y consulta el endpoint MLOPS_EAN de Databricks
+import os
+import requests
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, Field
+
+# Credenciales: se inyectan como variables de entorno en Azure (nunca escritas en el código)
+DATABRICKS_URL = os.getenv("DATABRICKS_URL")
+DATABRICKS_TOKEN = os.getenv("DATABRICKS_TOKEN")
+
+app = FastAPI(title="API MLOps EAN", description="Predicción de aprobación de estudiantes")
+
+# Permite que el frontend (index.html) llame a la API desde otro dominio
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+
+
+# Campos que espera el modelo (deben coincidir con la firma registrada en MLflow)
+class Estudiante(BaseModel):
+    horas_estudio: float = Field(..., ge=0, le=24)
+    horas_sueno: float = Field(..., ge=0, le=24)
+    asistencia: float = Field(..., ge=0, le=100)
+    promedio_previo: float = Field(..., ge=0, le=5)
+    indice_dedicacion: float = Field(..., ge=0)
+    en_riesgo: int = Field(..., ge=0, le=1)
+    destacado: int = Field(..., ge=0, le=1)
+
+
+@app.get("/health")
+def health():
+    # Verifica que la API está viva y que tiene configuradas las credenciales
+    return {"status": "ok", "databricks_configurado": bool(DATABRICKS_URL and DATABRICKS_TOKEN)}
+
+
+@app.post("/predecir")
+def predecir(est: Estudiante):
+    if not (DATABRICKS_URL and DATABRICKS_TOKEN):
+        raise HTTPException(status_code=500, detail="Faltan DATABRICKS_URL o DATABRICKS_TOKEN")
+
+    # Databricks exige el formato dataframe_records
+    payload = {"dataframe_records": [est.model_dump()]}
+
+    try:
+        r = requests.post(
+            DATABRICKS_URL,
+            headers={"Authorization": f"Bearer {DATABRICKS_TOKEN}"},
+            json=payload,
+            timeout=120,  # margen para el arranque en frío del endpoint
+        )
+    except requests.exceptions.Timeout:
+        raise HTTPException(status_code=504, detail="Databricks tardó demasiado (arranque en frío). Intente de nuevo.")
+
+    if r.status_code != 200:
+        raise HTTPException(status_code=502, detail=f"Error de Databricks: {r.text}")
+
+    pred = int(r.json()["predictions"][0])  # 1 = aprueba, 0 = reprueba
+    return {
+        "prediccion": pred,
+        "resultado": "Aprueba ✅" if pred == 1 else "Reprueba ❌",
+        "datos_recibidos": est.model_dump(),
+    }</code></pre></div>
+  <p>Por partes:</p>
+  <ul>
+    <li><strong>Credenciales desde el entorno.</strong> <code>os.getenv</code> lee la URL y el token que Azure le inyecta. No están escritos en el código, así que el repositorio puede ser público sin riesgo.</li>
+    <li><strong>CORS abierto.</strong> Permite que la página en Storage, que está en otra dirección, pueda llamar a la API.</li>
+    <li><strong>La clase <code>Estudiante</code>.</strong> Define los 7 campos, su tipo y su rango. Si alguien envía <code>asistencia: 150</code>, la API lo rechaza con un error 422 antes de molestar a Databricks.</li>
+    <li><strong><code>/health</code>.</strong> Ruta de diagnóstico: confirma que la API está viva y que tiene la URL y el token configurados.</li>
+    <li><strong><code>/predecir</code>.</strong> Pone los datos en formato <code>dataframe_records</code>, llama al endpoint con el token, y traduce el 1 o 0 a texto. Si Databricks tarda demasiado responde 504; si Databricks falla, 502.</li>
+  </ul>
+
+  <h3>requirements.txt</h3>
+  <div class="codigo"><div class="etiqueta">requirements.txt</div><pre><code>fastapi==0.115.0
+uvicorn==0.30.6
+requests==2.32.3</code></pre></div>
+  <p><strong>¿Cómo se sabe qué poner aquí?</strong> Sale de lo que el programa hace. La API tiene tres trabajos, y cada uno necesita una herramienta:</p>
+  <div class="tabla"><table>
+    <thead><tr><th>Trabajo</th><th>Librería</th><th>Dónde se ve</th></tr></thead>
+    <tbody>
+      <tr><td>Recibir peticiones de internet</td><td>fastapi</td><td><code>from fastapi import FastAPI</code></td></tr>
+      <tr><td>Estar encendida y escuchando</td><td>uvicorn</td><td>En el Dockerfile: <code>CMD ["uvicorn", ...]</code></td></tr>
+      <tr><td>Llamar a Databricks</td><td>requests</td><td><code>requests.post(...)</code></td></tr>
+    </tbody>
+  </table></div>
+  <p>La regla práctica: revisa los <code>import</code> de tu código. Lo que viene con Python (<code>os</code>, <code>json</code>, <code>datetime</code>…) no va; lo que instalaste con <code>pip</code> sí. Las versiones se fijan con <code>==</code> para que la imagen se construya siempre igual; puedes verlas con <code>pip show fastapi uvicorn requests</code>.</p>
+  <div class="aviso cuidado">
+    <p class="titulo">No van las librerías del modelo</p>
+    <p>scikit-learn y pandas no están aquí porque el modelo no corre en el Docker: corre en el endpoint de Databricks, que tiene su propio entorno. Son dos entornos separados.</p>
+  </div>
+
+  <h3>Dockerfile</h3>
+  <div class="codigo"><div class="etiqueta">Dockerfile</div><pre><code># Imagen base liviana de Python
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Instalar dependencias primero (aprovecha la caché de Docker)
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copiar el código de la API
+COPY main.py .
+
+# Container Apps enviará el tráfico a este puerto
+EXPOSE 8000
+
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]</code></pre></div>
+  <div class="tabla"><table>
+    <thead><tr><th>Instrucción</th><th>Qué significa</th></tr></thead>
+    <tbody>
+      <tr><td><code>FROM python:3.11-slim</code></td><td>"Dame un Linux con Python 3.11 ya instalado." <code>slim</code> es la versión liviana.</td></tr>
+      <tr><td><code>WORKDIR /app</code></td><td>"Crea la carpeta <code>/app</code> y trabaja dentro de ella."</td></tr>
+      <tr><td><code>COPY requirements.txt .</code> + <code>RUN pip install</code></td><td>"Copia la lista de librerías e instálalas."</td></tr>
+      <tr><td><code>COPY main.py .</code></td><td>"Copia el código." El contenedor empieza vacío: tus archivos no existen dentro hasta que se copian.</td></tr>
+      <tr><td><code>EXPOSE 8000</code></td><td>"La API atiende por la puerta 8000."</td></tr>
+      <tr><td><code>CMD [...]</code></td><td>"Al encender, arranca la API con Uvicorn." <code>0.0.0.0</code> acepta conexiones desde fuera del contenedor.</td></tr>
+    </tbody>
+  </table></div>
+  <div class="aviso analogia">
+    <p class="titulo">¿Por qué se copia requirements.txt antes que main.py?</p>
+    <p>Docker guarda en caché cada paso. Las librerías cambian poco y tardan en instalarse; el código cambia seguido. Con este orden, si editas <code>main.py</code>, Docker reutiliza la instalación y solo repite la última copia. La construcción tarda segundos en lugar de minutos.</p>
+  </div>
+</section>
+
+<!-- ================= FASE 2 ================= -->
+<section id="fase2">
+  <h2><span class="fase">Fase 2</span>Subir el código a GitHub</h2>
+
+  <h3>1. Instalar y configurar Git</h3>
+  <p>Descárgalo de <strong>git-scm.com</strong> e instálalo con las opciones por defecto. Cierra y vuelve a abrir la terminal, y comprueba:</p>
+  <div class="codigo"><div class="etiqueta">Anaconda Prompt</div><pre><code>git --version
+git config --global user.name "Tu Nombre"
+git config --global user.email "tu_correo_de_github@ejemplo.com"</code></pre></div>
+
+  <h3>2. Crear el repositorio</h3>
+  <p>En github.com: <strong>New</strong> → nombre <code>mlops-ean-api</code> → público o privado → <strong>sin</strong> README, .gitignore ni licencia → <strong>Create repository</strong>.</p>
+
+  <h3>3. Subir los archivos</h3>
+  <div class="codigo"><div class="etiqueta">Anaconda Prompt</div><pre><code>cd C:\mlops-ean-api
+git init
+git add .
+git commit -m "API FastAPI que consulta el endpoint MLOPS_EAN"
+git branch -M main
+git remote add origin https://github.com/TU_USUARIO/mlops-ean-api.git
+git push -u origin main</code></pre></div>
+  <div class="tabla"><table>
+    <thead><tr><th>Comando</th><th>Qué hace</th><th>Si fuera un envío por correo</th></tr></thead>
+    <tbody>
+      <tr><td><code>git init</code></td><td>Activa Git en la carpeta (una sola vez).</td><td>Consigue una caja.</td></tr>
+      <tr><td><code>git add .</code></td><td>Selecciona todos los archivos.</td><td>Mete los archivos en la caja.</td></tr>
+      <tr><td><code>git commit -m "..."</code></td><td>Guarda una versión con un mensaje.</td><td>Cierra la caja y le pega una etiqueta.</td></tr>
+      <tr><td><code>git branch -M main</code></td><td>Nombra la rama principal <code>main</code>.</td><td>La marca como envío principal.</td></tr>
+      <tr><td><code>git remote add origin ...</code></td><td>Conecta la carpeta con GitHub (una sola vez).</td><td>Escribe la dirección de destino.</td></tr>
+      <tr><td><code>git push -u origin main</code></td><td>Sube las versiones a GitHub.</td><td>Despacha el paquete.</td></tr>
+    </tbody>
+  </table></div>
+  <div class="aviso comprueba">
+    <p class="titulo">Comprueba</p>
+    <p>Abre <code>github.com/TU_USUARIO/mlops-ean-api</code>. Deben aparecer los archivos y tu mensaje de commit.</p>
+  </div>
+  <p>De aquí en adelante, cada cambio son solo tres comandos: <code>git add .</code>, <code>git commit -m "describe el cambio"</code> y <code>git push</code>.</p>
+</section>
+
+<!-- ================= FASE 3 ================= -->
+<section id="fase3">
+  <h2><span class="fase">Fase 3</span>Preparar la infraestructura en Azure</h2>
+  <p>En esta fase se crean los recursos vacíos. Todavía no se despliega nada: es preparar el local antes de abrir el negocio.</p>
+  <div class="tabla"><table>
+    <thead><tr><th>Recurso</th><th>Nombre</th><th>En el local</th></tr></thead>
+    <tbody>
+      <tr><td>Grupo de recursos</td><td><code>rg-mlops-ean</code></td><td>El local completo</td></tr>
+      <tr><td>Container Registry</td><td><code>acrmlopseanlp</code></td><td>La bodega</td></tr>
+      <tr><td>Log Analytics</td><td><code>log-mlops-ean</code></td><td>La cámara de seguridad (registros)</td></tr>
+      <tr><td>Storage Account</td><td><code>stmlopseanlp</code></td><td>La vitrina (página web)</td></tr>
+      <tr><td>Container Apps Environment</td><td><code>env-mlops-ean</code></td><td>El espacio de atención</td></tr>
+    </tbody>
+  </table></div>
+  <p>Los nombres del registry y del storage deben ser únicos en todo Azure, con solo minúsculas y números. Si alguno ya existe, agrégale un número al final y úsalo igual en el resto de la guía.</p>
+
+  <h3>1. Instalar Azure CLI e iniciar sesión</h3>
+  <p>Instálalo desde <strong>aka.ms/installazurecliwindows</strong>, cierra y abre la terminal, y luego:</p>
+  <div class="codigo"><div class="etiqueta">Anaconda Prompt</div><pre><code>az --version
+az login
+az account show --query "{nombre:name, id:id}" -o table</code></pre></div>
+  <p>El último comando debe mostrar la suscripción <strong>Azure for Students</strong>. Anota su <code>id</code>.</p>
+
+  <h3>2. Activar los servicios en la suscripción</h3>
+  <p>Una suscripción nueva trae los servicios apagados. Hay que registrarlos:</p>
+  <div class="codigo"><div class="etiqueta">Anaconda Prompt</div><pre><code>az provider register --namespace Microsoft.App
+az provider register --namespace Microsoft.OperationalInsights
+az provider register --namespace Microsoft.ContainerRegistry
+az provider register --namespace Microsoft.Storage</code></pre></div>
+  <p>El registro sigue en segundo plano. Revisa cada uno hasta que diga <code>Registered</code>; <code>Microsoft.App</code> puede tardar más de 20 minutos:</p>
+  <div class="codigo"><div class="etiqueta">Anaconda Prompt</div><pre><code>az provider show -n Microsoft.App --query registrationState -o tsv</code></pre></div>
+
+  <h3>3. Elegir una región permitida</h3>
+  <p>Azure for Students solo permite algunas regiones, y la lista cambia de una cuenta a otra. Consúltala:</p>
+  <div class="codigo"><div class="etiqueta">Anaconda Prompt</div><pre><code>az policy assignment list --disable-scope-strict-match --query "[].parameters.listOfAllowedLocations.value" -o json</code></pre></div>
+  <p>En nuestro caso salieron <code>spaincentral</code>, <code>westus</code>, <code>mexicocentral</code>, <code>chilecentral</code> y <code>germanywestcentral</code>. Elegimos <code>westus</code> porque tiene todos los servicios que necesitamos y está cerca de Databricks. Si tu lista es distinta, reemplaza <code>westus</code> en todos los comandos.</p>
+
+  <h3>4. Crear los recursos</h3>
+  <div class="codigo"><div class="etiqueta">Grupo de recursos</div><pre><code>az group create --name rg-mlops-ean --location westus</code></pre></div>
+  <div class="codigo"><div class="etiqueta">Container Registry</div><pre><code>az acr create --resource-group rg-mlops-ean --name acrmlopseanlp --sku Basic --admin-enabled true</code></pre></div>
+  <div class="codigo"><div class="etiqueta">Log Analytics</div><pre><code>az monitor log-analytics workspace create --resource-group rg-mlops-ean --workspace-name log-mlops-ean --location westus</code></pre></div>
+  <p>De la respuesta, anota el <code>customerId</code>. Luego obtén la clave:</p>
+  <div class="codigo"><div class="etiqueta">Clave del Log Analytics</div><pre><code>az monitor log-analytics workspace get-shared-keys --resource-group rg-mlops-ean --workspace-name log-mlops-ean --query primarySharedKey -o tsv</code></pre></div>
+  <div class="codigo"><div class="etiqueta">Storage Account + sitio web estático</div><pre><code>az storage account create --name stmlopseanlp --resource-group rg-mlops-ean --location westus --sku Standard_LRS --kind StorageV2
+az storage blob service-properties update --account-name stmlopseanlp --static-website --index-document index.html</code></pre></div>
+  <p>La respuesta del Storage trae en <code>primaryEndpoints.web</code> la dirección donde quedará la página, por ejemplo <code>https://stmlopseanlp.z22.web.core.windows.net/</code>.</p>
+  <p>Cuando <code>Microsoft.App</code> diga <code>Registered</code>, crea el Environment con el <code>customerId</code> y la clave:</p>
+  <div class="codigo"><div class="etiqueta">Container Apps Environment</div><pre><code>az containerapp env create --name env-mlops-ean --resource-group rg-mlops-ean --location westus --logs-workspace-id TU_CUSTOMER_ID --logs-workspace-key "TU_CLAVE"</code></pre></div>
+  <div class="aviso cuidado">
+    <p class="titulo">¿Por qué el Log Analytics se crea a mano?</p>
+    <p>Azure podría crearlo automáticamente junto con el Environment, pero en cuentas Azure for Students eso suele fallar por las restricciones de la suscripción. Crearlo antes evita el problema.</p>
+  </div>
+  <div class="aviso comprueba">
+    <p class="titulo">Comprueba</p>
+    <p><code>az resource list --resource-group rg-mlops-ean -o table</code> debe mostrar el registry, el Log Analytics, el Storage y el Environment.</p>
+  </div>
+</section>
+
+<!-- ================= FASE 4 ================= -->
+<section id="fase4">
+  <h2><span class="fase">Fase 4</span>Despliegue automático con GitHub Actions</h2>
+  <p>La idea: cada vez que hagas <code>git push</code>, GitHub construye la imagen Docker y la pone a correr en Azure, sin que entres al portal.</p>
+
+  <h3>1. Crear una identidad para GitHub</h3>
+  <p>GitHub no puede iniciar sesión con tu usuario. Necesita una "cuenta de servicio" propia, con permiso solo sobre el grupo <code>rg-mlops-ean</code>:</p>
+  <div class="codigo"><div class="etiqueta">Anaconda Prompt</div><pre><code>az ad sp create-for-rbac --name sp-mlops-ean-github --role contributor --scopes /subscriptions/TU_SUBSCRIPTION_ID/resourceGroups/rg-mlops-ean --json-auth</code></pre></div>
+  <p>Responde un JSON con varias líneas. Para GitHub solo necesitas estos cuatro campos:</p>
+  <div class="codigo"><div class="etiqueta">AZURE_CREDENTIALS</div><pre><code>{
+  "clientId": "...",
+  "clientSecret": "...",
+  "subscriptionId": "...",
+  "tenantId": "..."
+}</code></pre></div>
+  <div class="aviso cuidado">
+    <p class="titulo">El clientSecret es una contraseña</p>
+    <p>Da acceso a tu grupo de recursos. No lo pegues en chats, documentos ni en el código; solo en el secreto de GitHub.</p>
+  </div>
+
+  <h3>2. Cargar los secretos en GitHub</h3>
+  <p>En el repositorio: <strong>Settings</strong> → <strong>Secrets and variables</strong> → <strong>Actions</strong> → <strong>New repository secret</strong>. Si no ves Settings, está en el menú "…" a la derecha de las pestañas.</p>
+  <div class="tabla"><table>
+    <thead><tr><th>Name</th><th>Secret</th></tr></thead>
+    <tbody>
+      <tr><td><code>AZURE_CREDENTIALS</code></td><td>El JSON de 4 campos, completo</td></tr>
+      <tr><td><code>DATABRICKS_URL</code></td><td>La URL del endpoint, terminada en <code>/invocations</code></td></tr>
+      <tr><td><code>DATABRICKS_TOKEN</code></td><td>El token <code>dapi...</code></td></tr>
+    </tbody>
+  </table></div>
+  <p>Los nombres deben ir exactamente así, porque el workflow los busca por nombre. GitHub nunca vuelve a mostrar el valor: es normal.</p>
+
+  <h3>3. El archivo del workflow</h3>
+  <p>Guárdalo en esta ruta exacta dentro de tu carpeta:</p>
+  <div class="codigo"><div class="etiqueta">Ruta</div><pre><code>C:\mlops-ean-api\.github\workflows\deploy.yml</code></pre></div>
+  <div class="codigo"><div class="etiqueta">deploy.yml</div><pre><code># Despliegue automático de la API en Azure Container Apps
+# Se ejecuta en cada push a main (excepto si solo cambia index.html) o a mano desde la pestaña Actions
+name: Desplegar API en Azure
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: ["index.html"]   # el frontend vive en Storage, no requiere reconstruir el Docker
+  workflow_dispatch:
+
+env:
+  RESOURCE_GROUP: rg-mlops-ean
+  ACR_NAME: acrmlopseanlp
+  ENVIRONMENT: env-mlops-ean
+  APP_NAME: api-mlops-ean
+  IMAGE: acrmlopseanlp.azurecr.io/api-mlops-ean:${{ github.sha }}   # cada versión con la etiqueta del commit
+
+jobs:
+  desplegar:
+    runs-on: ubuntu-latest
+    steps:
+      # 1. Descarga el código del repositorio
+      - uses: actions/checkout@v4
+
+      # 2. Inicia sesión en Azure con la cuenta de servicio
+      - uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      # 3. Construye la imagen Docker y la sube al Container Registry
+      - name: Construir y subir imagen
+        run: |
+          az acr login --name $ACR_NAME
+          docker build -t $IMAGE .
+          docker push $IMAGE
+
+      # 4. Crea la Container App la primera vez; las siguientes solo la actualiza
+      - name: Crear o actualizar la API
+        env:
+          DB_URL: ${{ secrets.DATABRICKS_URL }}
+          DB_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+        run: |
+          if az containerapp show -n $APP_NAME -g $RESOURCE_GROUP &gt; /dev/null 2&gt;&amp;1; then
+            echo "La API ya existe: se actualiza"
+            az containerapp secret set -n $APP_NAME -g $RESOURCE_GROUP \
+              --secrets databricks-url="$DB_URL" databricks-token="$DB_TOKEN"
+            az containerapp update -n $APP_NAME -g $RESOURCE_GROUP --image $IMAGE
+          else
+            echo "Primera vez: se crea la API"
+            ACR_PASSWORD=$(az acr credential show -n $ACR_NAME --query "passwords[0].value" -o tsv)
+            az containerapp create -n $APP_NAME -g $RESOURCE_GROUP \
+              --environment $ENVIRONMENT \
+              --image $IMAGE \
+              --registry-server $ACR_NAME.azurecr.io \
+              --registry-username $ACR_NAME \
+              --registry-password "$ACR_PASSWORD" \
+              --target-port 8000 \
+              --ingress external \
+              --min-replicas 0 \
+              --max-replicas 1 \
+              --secrets databricks-url="$DB_URL" databricks-token="$DB_TOKEN" \
+              --env-vars DATABRICKS_URL=secretref:databricks-url DATABRICKS_TOKEN=secretref:databricks-token
+          fi
+
+      # 5. Muestra la URL pública de la API
+      - name: URL de la API
+        run: |
+          FQDN=$(az containerapp show -n $APP_NAME -g $RESOURCE_GROUP --query properties.configuration.ingress.fqdn -o tsv)
+          echo "API publicada en: https://$FQDN"
+          echo "Pruebe: https://$FQDN/health"</code></pre></div>
+  <p>Lo que hace, en orden:</p>
+  <ol>
+    <li><strong>Descarga el código</strong> del repositorio.</li>
+    <li><strong>Entra a Azure</strong> con la cuenta de servicio de <code>AZURE_CREDENTIALS</code>.</li>
+    <li><strong>Construye la imagen</strong> con el Dockerfile y la sube al registry, etiquetada con el código del commit. Así cada versión queda identificada.</li>
+    <li><strong>Crea la API</strong> la primera vez, o la <strong>actualiza</strong> las siguientes. La URL y el token de Databricks entran como secretos de Container Apps (<code>secretref</code>), nunca como texto visible.</li>
+    <li><strong>Imprime la URL pública</strong> de la API.</li>
+  </ol>
+  <p>Dos decisiones importantes: si solo cambia <code>index.html</code>, el workflow no se dispara, porque la página vive en Storage. Y <code>--min-replicas 0</code> apaga la API cuando nadie la usa, para no gastar crédito.</p>
+
+  <h3>4. Lanzar el despliegue</h3>
+  <div class="codigo"><div class="etiqueta">Anaconda Prompt</div><pre><code>cd C:\mlops-ean-api
+git add .
+git commit -m "Agrega workflow de despliegue"
+git push</code></pre></div>
+  <p>En GitHub, abre la pestaña <strong>Actions</strong>. Verás el workflow corriendo; tarda unos 3–5 minutos. Al terminar, el paso "URL de la API" muestra la dirección pública.</p>
+  <div class="aviso cuidado">
+    <p class="titulo">Antes del push</p>
+    <p>El Environment <code>env-mlops-ean</code> debe existir. Si haces push antes de crearlo, el workflow falla en el paso 4.</p>
+  </div>
+</section>
+
+<!-- ================= FASE 5 ================= -->
+<section id="fase5">
+  <h2><span class="fase">Fase 5</span>Probar la API</h2>
+  <p>Con la URL que imprimió el workflow (algo como <code>https://api-mlops-ean.xxxx.westus.azurecontainerapps.io</code>):</p>
+  <h3>1. ¿Está viva?</h3>
+  <p>Abre en el navegador <code>https://TU_URL/health</code>. Debe responder:</p>
+  <div class="codigo sin-etiqueta"><pre><code>{"status": "ok", "databricks_configurado": true}</code></pre></div>
+  <p>Si <code>databricks_configurado</code> sale <code>false</code>, los secretos de Databricks no llegaron a la API.</p>
+  <h3>2. La documentación automática</h3>
+  <p>FastAPI genera una página de pruebas en <code>https://TU_URL/docs</code>. Ahí puedes abrir <code>/predecir</code>, hacer clic en <strong>Try it out</strong>, escribir los datos y ejecutar. Es la forma más visual de mostrarla en clase.</p>
+  <h3>3. Desde Python</h3>
+  <div class="codigo"><div class="etiqueta">Python</div><pre><code>import requests
+
+URL = "https://TU_URL/predecir"
+
+datos = {
+    "horas_estudio": 7.5, "horas_sueno": 7.0, "asistencia": 90.0,
+    "promedio_previo": 4.2, "indice_dedicacion": 8.0,
+    "en_riesgo": 0, "destacado": 1
+}
+
+r = requests.post(URL, json=datos, timeout=120)
+print(r.status_code)  # 200
+print(r.json())       # {'prediccion': 1, 'resultado': 'Aprueba ✅', ...}</code></pre></div>
+  <p>Fíjate en la diferencia con la prueba de la Fase 0: aquí no hay token ni <code>dataframe_records</code>. La API se encarga de eso; el usuario solo envía los datos del estudiante.</p>
+</section>
+
+<!-- ================= FASE 6 ================= -->
+<section id="fase6">
+  <h2><span class="fase">Fase 6</span>Publicar la página web</h2>
+  <p>La página <code>index.html</code> tiene el formulario con los 7 campos. Solo hay que decirle dónde está la API y subirla al Storage.</p>
+  <h3>1. Poner la URL de la API</h3>
+  <p>Abre <code>index.html</code> y cambia esta línea por la URL real, terminada en <code>/predecir</code>:</p>
+  <div class="codigo"><div class="etiqueta">index.html</div><pre><code>const API_URL = "https://TU_URL/predecir";</code></pre></div>
+  <h3>2. Subirla al Storage</h3>
+  <div class="codigo"><div class="etiqueta">Anaconda Prompt</div><pre><code>cd C:\mlops-ean-api
+az storage blob upload --account-name stmlopseanlp --container-name "$web" --name index.html --file index.html --content-type "text/html" --overwrite</code></pre></div>
+  <p><code>$web</code> es una carpeta especial que Azure creó al activar el sitio web estático: todo lo que está ahí se publica.</p>
+  <div class="aviso comprueba">
+    <p class="titulo">Comprueba</p>
+    <p>Abre <code>https://stmlopseanlp.z22.web.core.windows.net/</code>, llena el formulario y haz clic en <strong>Predecir</strong>. La primera vez puede tardar hasta un par de minutos porque la API y el endpoint estaban apagados.</p>
+  </div>
+</section>
+
+<!-- ================= CICLO DE VIDA ================= -->
+<section id="ciclo">
+  <h2>Cuando algo cambia</h2>
+  <p>La gran ventaja de esta arquitectura es que cada tipo de cambio tiene su propio camino, y ninguno obliga a rehacer todo.</p>
+  <div class="tabla"><table>
+    <thead><tr><th>Qué cambia</th><th>Qué haces</th><th>Qué no se toca</th></tr></thead>
+    <tbody>
+      <tr><td>El modelo (reentrenamiento por drift)</td><td>NB02 reentrena, NB03 promueve el champion y actualiza el endpoint</td><td>GitHub, Docker, Azure</td></tr>
+      <tr><td>El código de la API</td><td>Editas <code>main.py</code> y haces <code>git add</code>, <code>commit</code>, <code>push</code></td><td>Databricks, la página</td></tr>
+      <tr><td>Una librería de la API</td><td>Editas <code>requirements.txt</code> y haces push</td><td>Databricks, la página</td></tr>
+      <tr><td>El diseño de la página</td><td>Editas <code>index.html</code> y lo vuelves a subir al Storage</td><td>La API, Databricks</td></tr>
+      <tr><td>El token de Databricks vence</td><td>Generas uno nuevo, actualizas el secreto <code>DATABRICKS_TOKEN</code> en GitHub y relanzas el workflow</td><td>El código</td></tr>
+    </tbody>
+  </table></div>
+  <p>El ciclo completo de MLOps queda así:</p>
+  <div class="codigo sin-etiqueta"><pre><code>NB04 detecta drift → NB02 reentrena → NB03 promueve champion + actualiza MLOPS_EAN
+                                                     ↓
+                     La API en Azure sigue llamando a la misma URL y ya usa el modelo nuevo</code></pre></div>
+  <p>Para relanzar el workflow sin cambiar código: pestaña <strong>Actions</strong> → <strong>Desplegar API en Azure</strong> → <strong>Run workflow</strong>.</p>
+</section>
+
+<!-- ================= ERRORES ================= -->
+<section id="errores">
+  <h2>Errores frecuentes y cómo resolverlos</h2>
+  <p>Todos estos aparecieron durante la preparación de esta práctica.</p>
+  <div class="tabla"><table>
+    <thead><tr><th>Mensaje</th><th>Qué significa</th><th>Solución</th></tr></thead>
+    <tbody>
+      <tr><td><code>SyntaxError: invalid decimal literal</code> en Databricks</td><td>Pegaste un comando <code>curl</code> en una celda de Python.</td><td>Usa la versión con <code>requests</code> de la Fase 0, o ejecuta <code>curl</code> en la terminal.</td></tr>
+      <tr><td><code>InvalidSchema: No connection adapters were found for 'URL: https://...'</code></td><td>La URL quedó con la palabra "URL:" pegada al inicio.</td><td>La URL debe empezar directamente con <code>https</code>.</td></tr>
+      <tr><td>Timeout en la primera predicción</td><td>El endpoint estaba apagado (scale to zero) y tarda en arrancar.</td><td>Espera un minuto y repite.</td></tr>
+      <tr><td><code>'az' no se reconoce como un comando</code></td><td>Azure CLI no está instalado, o la terminal se abrió antes de instalarlo.</td><td>Instálalo y abre una terminal nueva. Si persiste, reinicia el PC.</td></tr>
+      <tr><td><code>No subscriptions found</code> tras <code>az login</code></td><td>La cuenta no tiene una suscripción activa.</td><td>Activa Azure for Students en <strong>azure.microsoft.com/free/students</strong> con esa cuenta.</td></tr>
+      <tr><td><code>RequestDisallowedByAzure</code></td><td>La región no está permitida para tu suscripción.</td><td>Consulta las regiones permitidas (Fase 3, paso 3) y usa una de ellas.</td></tr>
+      <tr><td><code>InvalidResourceGroupLocation</code></td><td>El grupo ya existe en otra región.</td><td><code>az group delete --name rg-mlops-ean --yes</code>, espera a que <code>az group exists</code> diga <code>false</code> y créalo de nuevo.</td></tr>
+      <tr><td><code>SubscriptionNotFound</code> al crear el Storage</td><td>Engañoso: el proveedor <code>Microsoft.Storage</code> no está registrado.</td><td><code>az provider register --namespace Microsoft.Storage</code> y espera <code>Registered</code>.</td></tr>
+      <tr><td><code>Microsoft.App</code> sigue en <code>Registering</code></td><td>En suscripciones nuevas puede tardar más de 20 minutos.</td><td>Espera. En el portal, Suscripciones → Proveedores de recursos muestra el estado. "RegistrationRequired" es la directiva, no el estado.</td></tr>
+      <tr><td>Error de la extensión <code>containerapp</code> (Pip failed)</td><td>Las versiones recientes de Azure CLI ya incluyen Container Apps.</td><td>Comprueba con <code>az containerapp env create --help</code>. Si muestra la ayuda, ignora el error.</td></tr>
+      <tr><td><code>git push</code> falla por permisos</td><td>Windows tiene guardadas credenciales viejas de GitHub.</td><td>Administrador de credenciales → Credenciales de Windows → borra las de <code>git:https://github.com</code> y repite.</td></tr>
+      <tr><td>La página dice "No hubo conexión con la API"</td><td><code>API_URL</code> en <code>index.html</code> no tiene la dirección correcta.</td><td>Revisa que termine en <code>/predecir</code> y vuelve a subir el archivo.</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<!-- ================= RESUMEN ================= -->
+<section id="resumen">
+  <h2>Resumen y limpieza</h2>
+  <h3>Todos los nombres del proyecto</h3>
+  <div class="tabla"><table>
+    <thead><tr><th>Qué</th><th>Valor</th></tr></thead>
+    <tbody>
+      <tr><td>Modelo en Unity Catalog</td><td><code>workspace.default.mlops-posgrado-estudiantes</code> (champion = v4)</td></tr>
+      <tr><td>Endpoint de Databricks</td><td><code>MLOPS_EAN</code></td></tr>
+      <tr><td>Repositorio</td><td><code>mlops-ean-api</code></td></tr>
+      <tr><td>Grupo de recursos</td><td><code>rg-mlops-ean</code> (westus)</td></tr>
+      <tr><td>Container Registry</td><td><code>acrmlopseanlp.azurecr.io</code></td></tr>
+      <tr><td>Log Analytics</td><td><code>log-mlops-ean</code></td></tr>
+      <tr><td>Container Apps Environment</td><td><code>env-mlops-ean</code></td></tr>
+      <tr><td>API</td><td><code>api-mlops-ean</code></td></tr>
+      <tr><td>Storage (página web)</td><td><code>stmlopseanlp</code></td></tr>
+      <tr><td>Cuenta de servicio de GitHub</td><td><code>sp-mlops-ean-github</code></td></tr>
+      <tr><td>Secretos de GitHub</td><td><code>AZURE_CREDENTIALS</code>, <code>DATABRICKS_URL</code>, <code>DATABRICKS_TOKEN</code></td></tr>
+    </tbody>
+  </table></div>
+
+  <h3>Lista de verificación final</h3>
+  <ul>
+    <li>El endpoint <code>MLOPS_EAN</code> está <strong>Ready</strong> y responde desde Python.</li>
+    <li>El repositorio tiene <code>main.py</code>, <code>requirements.txt</code>, <code>Dockerfile</code> y <code>.github/workflows/deploy.yml</code>.</li>
+    <li>El workflow terminó en verde en la pestaña Actions.</li>
+    <li><code>/health</code> responde <code>databricks_configurado: true</code>.</li>
+    <li>La página en Storage muestra el sello de resultado.</li>
+  </ul>
+
+  <h3>Al terminar el curso: borrar todo</h3>
+  <p>El Container Registry cobra unos pocos dólares al mes aunque no se use. Para no gastar el crédito, borra el grupo completo; se lleva todos los recursos de Azure:</p>
+  <div class="codigo"><div class="etiqueta">Anaconda Prompt</div><pre><code>az group delete --name rg-mlops-ean --yes</code></pre></div>
+  <p>Y en Databricks, borra el endpoint <code>MLOPS_EAN</code> desde Serving y revoca el token en Settings → Developer → Access tokens.</p>
+</section>
+
+<p class="cierre">Guía de clase · MLOps · Universidad EAN · Despliegue de un modelo de Databricks en Azure Container Apps con FastAPI, Docker y GitHub Actions.</p>
+</main>
+</div>
+
+<script>
+  // Agrega un botón "Copiar" a cada bloque de código
+  document.querySelectorAll(".codigo").forEach((bloque) => {
+    const boton = document.createElement("button");
+    boton.className = "copiar";
+    boton.type = "button";
+    boton.textContent = "Copiar";
+    boton.addEventListener("click", async () => {
+      const texto = bloque.querySelector("pre").innerText;
+      try {
+        await navigator.clipboard.writeText(texto);
+      } catch (e) {
+        // Alternativa para navegadores que bloquean el portapapeles en archivos locales
+        const area = document.createElement("textarea");
+        area.value = texto;
+        document.body.appendChild(area);
+        area.select();
+        document.execCommand("copy");
+        area.remove();
+      }
+      boton.textContent = "Copiado";
+      setTimeout(() => (boton.textContent = "Copiar"), 1500);
+    });
+    bloque.appendChild(boton);
+  });
+</script>
+</body>
+</html>

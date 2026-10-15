@@ -93,6 +93,17 @@
     #resultado.bad  { display: block; background: var(--bad-bg);  color: var(--bad-text); }
     #resultado.warn { display: block; background: var(--warn-bg); color: var(--warn-text); }
     #resultado strong { font-size: 1.35rem; display: block; margin-bottom: 2px; }
+    .res-fila { display: flex; align-items: center; gap: 18px; }
+    .res-img { flex: 0 0 88px; width: 88px; height: 88px; }
+    .res-img svg { width: 100%; height: 100%; display: block; }
+    .res-msg { margin: 4px 0 0; font-size: 0.95rem; opacity: 0.9; }
+    @media (prefers-reduced-motion: no-preference) {
+      .res-img { animation: aparecer 0.45s ease-out; }
+      @keyframes aparecer { from { transform: scale(0.6); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+    }
+    @media (max-width: 420px) {
+      .res-fila { flex-direction: column; text-align: center; }
+    }
     footer { margin-top: 28px; color: var(--muted); font-size: 0.82rem; text-align: center; }
   </style>
 </head>
@@ -154,6 +165,30 @@
   const boton = document.getElementById("boton");
   const resultado = document.getElementById("resultado");
 
+  // Ilustraciones del resultado (SVG en línea; usan el color del texto del recuadro)
+  const IMG_APRUEBA = `
+    <svg viewBox="0 0 96 96" role="img" aria-label="Birrete de graduación">
+      <circle cx="48" cy="48" r="46" fill="currentColor" opacity="0.12"/>
+      <path d="M48 22 L84 38 L48 54 L12 38 Z" fill="currentColor"/>
+      <path d="M28 46 V60 C28 66 38 71 48 71 C58 71 68 66 68 60 V46 L48 55 Z" fill="currentColor" opacity="0.8"/>
+      <path d="M78 41 V58" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+      <circle cx="78" cy="61" r="4" fill="currentColor"/>
+      <circle cx="70" cy="74" r="13" fill="var(--card)" stroke="currentColor" stroke-width="3"/>
+      <path d="M64 74 L68.5 78.5 L76.5 69.5" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>`;
+
+  const IMG_REPRUEBA = `
+    <svg viewBox="0 0 96 96" role="img" aria-label="Libro abierto">
+      <circle cx="48" cy="48" r="46" fill="currentColor" opacity="0.12"/>
+      <path d="M16 30 C26 26 38 27 46 33 V70 C38 64 26 63 16 67 Z" fill="currentColor" opacity="0.85"/>
+      <path d="M80 30 C70 26 58 27 50 33 V70 C58 64 70 63 80 67 Z" fill="currentColor"/>
+      <path d="M23 40 C29 38 35 38 40 41 M23 48 C29 46 35 46 40 49 M56 41 C61 38 67 38 73 40 M56 49 C61 46 67 46 73 48"
+            fill="none" stroke="var(--card)" stroke-width="2" stroke-linecap="round" opacity="0.8"/>
+      <circle cx="70" cy="74" r="13" fill="var(--card)" stroke="currentColor" stroke-width="3"/>
+      <path d="M70 67 V76" stroke="currentColor" stroke-width="3.5" stroke-linecap="round"/>
+      <circle cx="70" cy="81" r="2.2" fill="currentColor"/>
+    </svg>`;
+
   function mostrar(clase, html) {
     resultado.className = clase;
     resultado.innerHTML = html;
@@ -187,9 +222,16 @@
 
       if (r.ok) {
         const aprueba = json.prediccion === 1;
+        const mensaje = aprueba
+          ? "¡Va por buen camino! Con estos hábitos el modelo predice que aprueba."
+          : "Hay riesgo de reprobar. Más horas de estudio y asistencia pueden cambiar el resultado.";
         mostrar(aprueba ? "ok" : "bad",
-          `<strong>${aprueba ? "Aprueba ✅" : "Reprueba ❌"}</strong>` +
-          `Predicción del modelo: ${json.prediccion}`);
+          `<div class="res-fila">` +
+            `<div class="res-img">${aprueba ? IMG_APRUEBA : IMG_REPRUEBA}</div>` +
+            `<div><strong>${aprueba ? "Aprueba ✅" : "Reprueba ❌"}</strong>` +
+            `Predicción del modelo: ${json.prediccion}` +
+            `<p class="res-msg">${mensaje}</p></div>` +
+          `</div>`);
       } else if (r.status === 504) {
         mostrar("warn", "El modelo está arrancando y tardó demasiado. Espera un minuto e intenta de nuevo.");
       } else {
